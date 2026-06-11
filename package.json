@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && npx --yes node@22 node_modules/vite/bin/vite.js build",
+    "build:ci": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
