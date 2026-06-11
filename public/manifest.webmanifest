@@ -1,0 +1,17 @@
+{
+  "name": "\u3072\u3068\u307e\u3068\u3081",
+  "short_name": "\u3072\u3068\u307e\u3068\u3081",
+  "description": "\u4e88\u5b9a\u3068\u30bf\u30b9\u30af\u3092\u4e00\u304b\u6240\u3078\u96c6\u3081\u308b\u30a2\u30d7\u30ea",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f8f5",
+  "theme_color": "#397b5b",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
