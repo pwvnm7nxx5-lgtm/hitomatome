@@ -106,6 +106,7 @@ textarea { width:100%; resize:vertical; border:1px solid var(--line); border-rad
 .file-button input { position:absolute; width:1px; height:1px; opacity:0; }
 @media (max-width: 760px) {
   .app-shell { padding:18px 13px 80px; }
+  input:not([type="file"]), select, textarea { font-size:16px; }
   header { align-items:flex-start; }
   .today-label { font-size:.72rem; padding:6px 9px; }
   .quick-add { align-items:stretch; flex-direction:column; gap:12px; }
