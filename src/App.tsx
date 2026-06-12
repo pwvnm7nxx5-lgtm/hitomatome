@@ -3,7 +3,7 @@ import './App.css'
 
 type ItemType = 'event' | 'task'
 type Category = '仕事' | '私生活'
-type View = 'today' | 'inbox' | 'all' | 'import' | 'help'
+type View = 'today' | 'calendar' | 'inbox' | 'all' | 'import' | 'help'
 type Item = { id: string; type: ItemType; title: string; date: string; startTime: string; endTime: string; category: Category; notes: string; done: boolean; confirmed: boolean; createdAt: string }
 
 const STORAGE_KEY = 'matome-schedule-items-v1'
@@ -11,6 +11,16 @@ const RECOVERY_KEY = `${STORAGE_KEY}-recovery`
 const pad = (value: number) => String(value).padStart(2, '0')
 const localDate = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 const today = () => localDate(new Date())
+const monthStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
+const addMonths = (date: Date, amount: number) => new Date(date.getFullYear(), date.getMonth() + amount, 1)
+const calendarDays = (month: Date) => {
+  const start = new Date(month.getFullYear(), month.getMonth(), 1 - month.getDay())
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    return date
+  })
+}
 const isValidDate = (value: string) => {
   if (value === '') return true
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -96,6 +106,8 @@ function googleCalendarUrl(item: Item) {
 
 function App() {
   const [view, setView] = useState<View>('today')
+  const [calendarMonth, setCalendarMonth] = useState(() => monthStart(new Date()))
+  const [selectedDate, setSelectedDate] = useState(today)
   const [items, setItems] = useState<Item[]>(loadItems)
   const [quickText, setQuickText] = useState('')
   const [draft, setDraft] = useState<Partial<Item> | null>(null)
@@ -114,6 +126,17 @@ function App() {
   const todayItems = openItems.filter((item) => item.date === today())
   const inboxItems = openItems.filter((item) => !item.confirmed || !item.date)
   const completedItems = items.filter((item) => item.done).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const selectedItems = items
+    .filter((item) => item.date === selectedDate)
+    .sort((a, b) => `${a.done}${a.startTime}`.localeCompare(`${b.done}${b.startTime}`))
+  const selectedOpenItems = selectedItems.filter((item) => !item.done)
+  const selectedCompletedItems = selectedItems.filter((item) => item.done)
+  const daysInCalendar = calendarDays(calendarMonth)
+  const moveCalendarMonth = (amount: number) => {
+    const next = addMonths(calendarMonth, amount)
+    setCalendarMonth(next)
+    setSelectedDate(localDate(next))
+  }
 
   const addQuick = () => {
     if (quickText.trim()) setDraft({ ...parseQuickInput(quickText), type: 'task', category: '仕事', endTime: '', notes: '' })
@@ -260,13 +283,30 @@ function App() {
     <header><div><p className="eyebrow">予定もタスクも、まずここへ</p><h1>ひとまとめ</h1></div><div className="today-label">{new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())}</div></header>
     {hasRecovery && <section className="recovery-alert" role="alert"><div><strong>以前の保存データを読み込めませんでした</strong><span>元データを復旧用ファイルとして保存できます。</span></div><button onClick={downloadRecovery}>復旧用データを保存</button><button onClick={dismissRecovery}>閉じる</button></section>}
     <section className="quick-add"><div className="quick-copy"><strong>すばやく追加</strong><span>「明日 16時 職員会議」のように入力</span>{voiceStatus && <span aria-live="polite">{voiceStatus}</span>}</div><div className="quick-controls"><label className="sr-only" htmlFor="quick-input">予定やタスク</label><input id="quick-input" value={quickText} onChange={(event) => setQuickText(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addQuick()} placeholder="予定やタスクを入力..." /><button className="voice" onClick={startVoice}>音声</button><button className="primary" onClick={addQuick}>追加</button></div></section>
-    <main><nav aria-label="メインメニュー"><button aria-current={view === 'today' ? 'page' : undefined} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>今日 <b>{todayItems.length}</b></button><button aria-current={view === 'inbox' ? 'page' : undefined} className={view === 'inbox' ? 'active' : ''} onClick={() => setView('inbox')}>受信箱 <b>{inboxItems.length}</b></button><button aria-current={view === 'all' ? 'page' : undefined} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>すべて <b>{openItems.length}</b></button><button aria-current={view === 'import' ? 'page' : undefined} className={view === 'import' ? 'active' : ''} onClick={() => setView('import')}>まとめて取込</button><button aria-current={view === 'help' ? 'page' : undefined} className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>使い方</button></nav>
+    <main><nav aria-label="メインメニュー"><button aria-current={view === 'today' ? 'page' : undefined} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>今日 <b>{todayItems.length}</b></button><button aria-current={view === 'calendar' ? 'page' : undefined} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button><button aria-current={view === 'inbox' ? 'page' : undefined} className={view === 'inbox' ? 'active' : ''} onClick={() => setView('inbox')}>受信箱 <b>{inboxItems.length}</b></button><button aria-current={view === 'all' ? 'page' : undefined} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>すべて <b>{openItems.length}</b></button><button aria-current={view === 'import' ? 'page' : undefined} className={view === 'import' ? 'active' : ''} onClick={() => setView('import')}>まとめて取込</button><button aria-current={view === 'help' ? 'page' : undefined} className={view === 'help' ? 'active' : ''} onClick={() => setView('help')}>使い方</button></nav>
       <section className="content">
         {view === 'today' && <><h2>今日やること</h2>{renderList(todayItems, '今日の予定・タスクはありません。')}</>}
+        {view === 'calendar' && <div className="calendar-view">
+          <div className="calendar-header"><button aria-label="前の月" onClick={() => moveCalendarMonth(-1)}>‹</button><h2>{new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long' }).format(calendarMonth)}</h2><button aria-label="次の月" onClick={() => moveCalendarMonth(1)}>›</button><button className="calendar-today" onClick={() => { setCalendarMonth(monthStart(new Date())); setSelectedDate(today()) }}>今日へ</button></div>
+          <div className="calendar-weekdays" aria-hidden="true">{['日', '月', '火', '水', '木', '金', '土'].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="calendar-grid" aria-label="月間カレンダー">{daysInCalendar.map((date) => {
+            const dateKey = localDate(date)
+            const dayItems = items.filter((item) => item.date === dateKey)
+            const openCount = dayItems.filter((item) => !item.done).length
+            const doneCount = dayItems.filter((item) => item.done).length
+            const outside = date.getMonth() !== calendarMonth.getMonth()
+            return <button key={dateKey} aria-label={`${dateKey} 未完了${openCount}件 完了${doneCount}件`} className={`${outside ? 'outside ' : ''}${dateKey === today() ? 'today ' : ''}${dateKey === selectedDate ? 'selected' : ''}`} onClick={() => { setSelectedDate(dateKey); if (outside) setCalendarMonth(monthStart(date)) }}>
+              <span className="day-number">{date.getDate()}</span>
+              <span className="day-counts">{openCount > 0 && <b>{openCount}</b>}{doneCount > 0 && <i>{doneCount}</i>}</span>
+            </button>
+          })}</div>
+          <div className="calendar-legend"><span><b />未完了</span><span><i />完了済み</span></div>
+          <div className="selected-day"><h2>{new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(`${selectedDate}T00:00:00`))}</h2>{renderList(selectedOpenItems, selectedCompletedItems.length ? '未完了の予定・タスクはありません。' : 'この日の予定・タスクはありません。')}{selectedCompletedItems.length > 0 && <><h3 className="completed-heading">完了済み</h3>{renderList(selectedCompletedItems, '', true)}</>}</div>
+        </div>}
         {view === 'inbox' && <><h2>確認待ち</h2><p className="lead">日付がないものや、まとめて取り込んだ項目を確認します。</p>{renderList(inboxItems, '確認待ちの項目はありません。')}</>}
         {view === 'all' && <><h2>すべての予定・タスク</h2>{renderList(openItems, '未完了の予定・タスクはありません。')}<h2 className="section-title">完了済み</h2>{renderList(completedItems, '完了済みの項目はありません。', true)}</>}
         {view === 'import' && <div className="panel"><h2>ChatGPTからまとめて取り込む</h2><p className="lead">ChatGPTが出力したJSONを、そのまま貼り付けてください。登録前に受信箱で確認できます。</p><label htmlFor="json-import">ChatGPTが出力したJSON</label><textarea id="json-import" rows={14} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder='[{"type":"event","title":"授業参観", ...}]' />{importMessage && <p className="message" aria-live="polite">{importMessage}</p>}<button className="primary" onClick={importJson}>受信箱へ追加</button></div>}
-        {view === 'help' && <div className="help"><h2>使い方</h2><section><h3>普段の追加</h3><p>画面上部へ「明日 16時 職員会議」のように入力します。候補を確認し、予定またはタスクとして保存してください。</p></section><section><h3>スマホのホーム画面へ追加</h3><p>iPhoneはSafariの共有ボタンから「ホーム画面に追加」、AndroidはChromeメニューから「ホーム画面に追加」または「アプリをインストール」を選びます。</p></section><section><h3>プリントから取り込む</h3><ol><li>プリントに児童名・住所・連絡先などがあれば、撮影前または画像編集で必ず隠します。</li><li>ChatGPTへ画像を送り、下の指示文を貼り付けます。</li><li>返ってきたJSONを「まとめて取込」に貼り付けます。</li><li>受信箱で日付や内容を確認してから使います。</li></ol><div className="prompt-box"><pre>{prompt}</pre><button onClick={copyPrompt}>{copied ? 'コピーしました' : '指示文をコピー'}</button><span className="sr-only" aria-live="polite">{copied ? '指示文をコピーしました' : ''}</span></div></section><section className="caution"><h3>大切な注意</h3><p>ChatGPTへ送る前に、児童・保護者・職員の個人情報を必ず除いてください。共有PCでは、同じブラウザを使う人に予定が見える可能性があります。</p></section><section><h3>保存とバックアップ</h3><p>データは、このブラウザ内だけに保存されます。端末の紛失やブラウザデータ削除に備えて、定期的にバックアップしてください。</p><div className="backup-actions"><button onClick={exportBackup}>バックアップを保存</button><label className="file-button">バックアップを復元<input type="file" accept="application/json,.json" onChange={(event) => restoreBackup(event.target.files?.[0])} /></label></div></section></div>}
+        {view === 'help' && <div className="help"><h2>使い方</h2><section><h3>普段の追加</h3><p>画面上部へ「明日 16時 職員会議」のように入力します。候補を確認し、予定またはタスクとして保存してください。</p></section><section><h3>カレンダーと完了済み</h3><p>「カレンダー」では過去・今日・未来の予定を月ごとに確認できます。日付を押すと、その日の予定と完了済み項目が表示されます。完了済み項目の戻るボタンを押すと、未完了へ戻せます。</p></section><section><h3>スマホのホーム画面へ追加</h3><p>iPhoneはSafariの共有ボタンから「ホーム画面に追加」、AndroidはChromeメニューから「ホーム画面に追加」または「アプリをインストール」を選びます。</p></section><section><h3>プリントから取り込む</h3><ol><li>プリントに児童名・住所・連絡先などがあれば、撮影前または画像編集で必ず隠します。</li><li>ChatGPTへ画像を送り、下の指示文を貼り付けます。</li><li>返ってきたJSONを「まとめて取込」に貼り付けます。</li><li>受信箱で日付や内容を確認してから使います。</li></ol><div className="prompt-box"><pre>{prompt}</pre><button onClick={copyPrompt}>{copied ? 'コピーしました' : '指示文をコピー'}</button><span className="sr-only" aria-live="polite">{copied ? '指示文をコピーしました' : ''}</span></div></section><section className="caution"><h3>大切な注意</h3><p>ChatGPTへ送る前に、児童・保護者・職員の個人情報を必ず除いてください。共有PCでは、同じブラウザを使う人に予定が見える可能性があります。</p></section><section><h3>保存とバックアップ</h3><p>データは、このブラウザ内だけに保存されます。端末の紛失やブラウザデータ削除に備えて、定期的にバックアップしてください。</p><div className="backup-actions"><button onClick={exportBackup}>バックアップを保存</button><label className="file-button">バックアップを復元<input type="file" accept="application/json,.json" onChange={(event) => restoreBackup(event.target.files?.[0])} /></label></div></section></div>}
       </section></main>
     {draft && <div className="modal-backdrop"><form ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading" onSubmit={(event) => { event.preventDefault(); saveDraft() }}><div className="modal-title"><h2 id="modal-heading">{editingId ? '内容を編集' : '内容を確認'}</h2><button type="button" aria-label="閉じる" onClick={closeDraft}>×</button></div><label>タイトル<input ref={titleInputRef} required value={draft.title ?? ''} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><div className="field-row"><label>種類<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as ItemType })}><option value="task">タスク</option><option value="event">予定</option></select></label><label>区分<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as Category })}><option>仕事</option><option>私生活</option></select></label></div><div className="field-row"><label>日付<input type="date" value={draft.date ?? ''} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>開始時刻<input type="time" value={draft.startTime ?? ''} onChange={(event) => setDraft({ ...draft, startTime: event.target.value })} /></label></div>{draft.type === 'event' && <label>終了時刻<input type="time" min={draft.startTime || undefined} value={draft.endTime ?? ''} onChange={(event) => setDraft({ ...draft, endTime: event.target.value })} /></label>}<label>メモ<textarea rows={3} value={draft.notes ?? ''} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>{!draft.date && <p className="message">日付なしで保存すると、受信箱に入ります。</p>}<button className="primary wide">保存する</button></form></div>}
   </div>
