@@ -1,2 +1,2 @@
-html { background:#f6f8f5; color-scheme:light; font-family:"Yu Gothic UI","Meiryo",system-ui,sans-serif; }
+html { background:#f6f8f5; color-scheme:light; font-family:"Yu Gothic UI","Meiryo",system-ui,sans-serif; overflow-x:hidden; }
 body { margin:0; color:#26332d; }
