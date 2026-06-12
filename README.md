@@ -34,3 +34,15 @@ npm run build
 現在の初版ではデータをブラウザのローカルストレージへ保存します。別端末との同期とGoogleカレンダー予定の自動取得には、FirebaseプロジェクトとGoogle OAuthの設定が必要です。
 
 このPCのNode.js 24ではViteのビルド終了時に問題が起きるため、`npm run build` は自動的にNode.js 22を一時利用します。
+
+## Google連携の設定
+
+`.env.example` の項目を `.env.local` に設定すると、GoogleログインによるFirestore同期とGoogleカレンダーの読み取り表示が有効になります。
+
+詳しい手順は [GOOGLE_SETUP.md](./GOOGLE_SETUP.md) を参照してください。
+
+- Firebase AuthenticationでGoogleプロバイダを有効化
+- Cloud Firestoreを作成し、`firestore.rules`を適用
+- Google Calendar APIを有効化
+- OAuthウェブクライアントの承認済みJavaScript生成元へ公開URLを追加
+- GitHub Pages公開では、同名の値をGitHub Actions Secretsへ登録

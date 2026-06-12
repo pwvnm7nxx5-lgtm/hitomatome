@@ -1,10 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import {
+  isCloudConfigured,
+  loginWithGoogle,
+  logoutCloud,
+  observeCloudItems,
+  observeUser,
+  saveCloudItems,
+} from './cloud'
+import {
+  connectGoogleCalendar,
+  isGoogleCalendarConfigured,
+  type GoogleCalendarItem,
+} from './googleCalendar'
 
 type ItemType = 'event' | 'task'
 type Category = '仕事' | '私生活'
-type View = 'today' | 'calendar' | 'day' | 'inbox' | 'all' | 'completed' | 'more' | 'import' | 'help'
-type Item = { id: string; type: ItemType; title: string; date: string; startTime: string; endTime: string; category: Category; notes: string; done: boolean; confirmed: boolean; createdAt: string }
+type View = 'today' | 'calendar' | 'day' | 'inbox' | 'all' | 'completed' | 'more' | 'connections' | 'import' | 'help'
+type Item = { id: string; type: ItemType; title: string; date: string; startTime: string; endTime: string; category: Category; notes: string; done: boolean; confirmed: boolean; createdAt: string; source?: 'google'; externalUrl?: string }
+type CloudUser = { uid: string; displayName: string | null; email: string | null }
 
 const STORAGE_KEY = 'matome-schedule-items-v1'
 const RECOVERY_KEY = `${STORAGE_KEY}-recovery`
@@ -38,7 +52,9 @@ const isItemArray = (value: unknown): value is Item[] => Array.isArray(value) &&
     typeof entry.endTime === 'string' && isValidTime(entry.endTime) &&
     (entry.category === '仕事' || entry.category === '私生活') &&
     typeof entry.notes === 'string' && typeof entry.done === 'boolean' &&
-    typeof entry.confirmed === 'boolean' && typeof entry.createdAt === 'string'
+    typeof entry.confirmed === 'boolean' && typeof entry.createdAt === 'string' &&
+    (entry.source === undefined || entry.source === 'google') &&
+    (entry.externalUrl === undefined || typeof entry.externalUrl === 'string')
 })
 
 const sampleItems: Item[] = [{ id: crypto.randomUUID(), type: 'task', title: '週案を確認する', date: today(), startTime: '', endTime: '', category: '仕事', notes: '初期サンプルです。完了または削除できます。', done: false, confirmed: true, createdAt: new Date().toISOString() }]
@@ -117,16 +133,29 @@ function App() {
   const [copied, setCopied] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState('')
   const [hasRecovery, setHasRecovery] = useState(() => Boolean(localStorage.getItem(RECOVERY_KEY)))
+  const [cloudUser, setCloudUser] = useState<CloudUser | null>(null)
+  const [cloudStatus, setCloudStatus] = useState('未接続')
+  const [googleItems, setGoogleItems] = useState<GoogleCalendarItem[]>([])
+  const [calendarStatus, setCalendarStatus] = useState('未接続')
   const titleInputRef = useRef<HTMLInputElement>(null)
   const modalRef = useRef<HTMLFormElement>(null)
   const wasDraftOpen = useRef(false)
+  const cloudReady = useRef(false)
+  const applyingCloud = useRef(false)
+  const firstCloudSnapshot = useRef(true)
+  const itemsRef = useRef(items)
+  const hadLocalData = useRef(Boolean(localStorage.getItem(STORAGE_KEY)))
 
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(items)), [items])
-  const openItems = useMemo(() => items.filter((item) => !item.done).sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)), [items])
+  useEffect(() => {
+    itemsRef.current = items
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+  }, [items])
+  const displayItems = useMemo(() => [...items, ...googleItems], [items, googleItems])
+  const openItems = useMemo(() => displayItems.filter((item) => !item.done).sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`)), [displayItems])
   const todayItems = openItems.filter((item) => item.date === today())
-  const inboxItems = openItems.filter((item) => !item.confirmed || !item.date)
+  const inboxItems = items.filter((item) => !item.done && (!item.confirmed || !item.date))
   const completedItems = items.filter((item) => item.done).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  const selectedItems = items
+  const selectedItems = displayItems
     .filter((item) => item.date === selectedDate)
     .sort((a, b) => `${a.done}${a.startTime}`.localeCompare(`${b.done}${b.startTime}`))
   const selectedOpenItems = selectedItems.filter((item) => !item.done)
@@ -137,6 +166,55 @@ function App() {
     setCalendarMonth(next)
     setSelectedDate(localDate(next))
   }
+
+  useEffect(() => observeUser((user) => {
+    cloudReady.current = false
+    firstCloudSnapshot.current = true
+    setCloudUser(user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null)
+    setCloudStatus(user ? '接続準備中' : '未接続')
+  }), [])
+
+  useEffect(() => {
+    if (!cloudUser) return
+    return observeCloudItems(cloudUser.uid, (cloudItems) => {
+      if (cloudItems === null) {
+        cloudReady.current = true
+        setCloudStatus('同期中')
+        void saveCloudItems(cloudUser.uid, itemsRef.current).then(() => setCloudStatus('同期済み'))
+        return
+      }
+      if (!isItemArray(cloudItems)) {
+        setCloudStatus('クラウドデータを読み込めません')
+        return
+      }
+      if (firstCloudSnapshot.current && hadLocalData.current && JSON.stringify(cloudItems) !== JSON.stringify(itemsRef.current)) {
+        firstCloudSnapshot.current = false
+        if (!window.confirm('クラウドに保存されたデータを、この端末へ読み込みますか？\nキャンセルすると、この端末のデータをクラウドへ保存します。')) {
+          cloudReady.current = true
+          void saveCloudItems(cloudUser.uid, itemsRef.current).then(() => setCloudStatus('同期済み'))
+          return
+        }
+      }
+      firstCloudSnapshot.current = false
+      applyingCloud.current = true
+      setItems(cloudItems)
+      hadLocalData.current = true
+      setCloudStatus('同期済み')
+      cloudReady.current = true
+      setTimeout(() => { applyingCloud.current = false }, 0)
+    }, () => setCloudStatus('同期エラー'))
+  }, [cloudUser])
+
+  useEffect(() => {
+    if (!cloudUser || !cloudReady.current || applyingCloud.current) return
+    setCloudStatus('同期中')
+    const timer = window.setTimeout(() => {
+      void saveCloudItems(cloudUser.uid, items)
+        .then(() => setCloudStatus('同期済み'))
+        .catch(() => setCloudStatus('同期エラー'))
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [cloudUser, items])
 
   const addQuick = () => {
     if (quickText.trim()) setDraft({ ...parseQuickInput(quickText), type: 'task', category: '仕事', endTime: '', notes: '' })
@@ -255,6 +333,28 @@ function App() {
     localStorage.removeItem(RECOVERY_KEY)
     setHasRecovery(false)
   }
+  const connectCloud = async () => {
+    try {
+      setCloudStatus('Googleログイン中')
+      await loginWithGoogle()
+    } catch {
+      setCloudStatus('ログインできませんでした')
+    }
+  }
+  const disconnectCloud = async () => {
+    await logoutCloud()
+    setCloudStatus('未接続')
+  }
+  const connectCalendar = async () => {
+    try {
+      setCalendarStatus('Googleへ接続中')
+      const events = await connectGoogleCalendar()
+      setGoogleItems(events)
+      setCalendarStatus(`${events.length}件を表示中`)
+    } catch (error) {
+      setCalendarStatus(error instanceof Error ? error.message : '接続できませんでした')
+    }
+  }
 
   const prompt = `このプリントから予定とタスクを抽出してください。
 個人情報は出力しないでください。日付や時刻が不明な場合は推測せず、空文字にしてください。
@@ -276,9 +376,9 @@ function App() {
   const renderList = (list: Item[], empty: string, completed = false) => <div className="item-list">
     {list.length === 0 && <div className="empty">{empty}</div>}
     {list.map((item) => <article className={`item-card ${item.type}`} key={item.id}>
-      <button className="check" aria-label={completed ? '未完了に戻す' : '完了にする'} onClick={() => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, done: !completed } : entry))}>{completed ? '↩' : '✓'}</button>
-      <div className="item-main"><div className="item-topline"><span className={`tag ${item.category === '私生活' ? 'private' : ''}`}>{item.category}</span><span className="type-label">{item.type === 'event' ? '予定' : 'タスク'}</span>{!item.confirmed && <span className="warning">要確認</span>}</div><strong>{item.title}</strong><div className="meta">{item.date || '日付未設定'} {item.startTime && `${item.startTime}${item.endTime ? ` - ${item.endTime}` : ''}`}</div>{item.notes && <p>{item.notes}</p>}</div>
-      <div className="item-actions">{!completed && <button onClick={() => editItem(item)}>編集</button>}{item.type === 'event' && item.date && !completed && <a href={googleCalendarUrl(item)} target="_blank" rel="noreferrer">Googleへ</a>}<button className="danger" onClick={() => deleteItem(item)}>削除</button></div>
+      {item.source !== 'google' && <button className="check" aria-label={completed ? '未完了に戻す' : '完了にする'} onClick={() => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, done: !completed } : entry))}>{completed ? '↩' : '✓'}</button>}
+      <div className="item-main"><div className="item-topline"><span className={`tag ${item.category === '私生活' ? 'private' : ''}`}>{item.category}</span><span className="type-label">{item.source === 'google' ? 'Googleカレンダー' : item.type === 'event' ? '予定' : 'タスク'}</span>{!item.confirmed && <span className="warning">要確認</span>}</div><strong>{item.title}</strong><div className="meta">{item.date || '日付未設定'} {item.startTime && `${item.startTime}${item.endTime ? ` - ${item.endTime}` : ''}`}</div>{item.notes && <p>{item.notes}</p>}</div>
+      <div className="item-actions">{item.source !== 'google' && !completed && <button onClick={() => editItem(item)}>編集</button>}{item.source === 'google' && item.externalUrl && <a href={item.externalUrl} target="_blank" rel="noreferrer">Googleで開く</a>}{item.source !== 'google' && item.type === 'event' && item.date && !completed && <a href={googleCalendarUrl(item)} target="_blank" rel="noreferrer">Googleへ</a>}{item.source !== 'google' && <button className="danger" onClick={() => deleteItem(item)}>削除</button>}</div>
     </article>)}
   </div>
 
@@ -286,7 +386,7 @@ function App() {
     <header><div><p className="eyebrow">予定もタスクも、まずここへ</p><h1>ひとまとめ</h1></div><div className="today-label">{new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())}</div></header>
     {hasRecovery && <section className="recovery-alert" role="alert"><div><strong>以前の保存データを読み込めませんでした</strong><span>元データを復旧用ファイルとして保存できます。</span></div><button onClick={downloadRecovery}>復旧用データを保存</button><button onClick={dismissRecovery}>閉じる</button></section>}
     <section className="quick-add"><div className="quick-copy"><strong>すばやく追加</strong><span>「明日 16時 職員会議」のように入力</span>{voiceStatus && <span aria-live="polite">{voiceStatus}</span>}</div><div className="quick-controls"><label className="sr-only" htmlFor="quick-input">予定やタスク</label><input id="quick-input" value={quickText} onChange={(event) => setQuickText(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addQuick()} placeholder="予定やタスクを入力..." /><button className="voice" onClick={startVoice}>音声</button><button className="primary" onClick={addQuick}>追加</button></div></section>
-    <main><nav aria-label="メインメニュー"><button aria-current={view === 'today' ? 'page' : undefined} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>今日 <b>{todayItems.length}</b></button><button aria-current={view === 'calendar' || view === 'day' ? 'page' : undefined} className={view === 'calendar' || view === 'day' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button><button aria-current={view === 'all' ? 'page' : undefined} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>すべて <b>{openItems.length}</b></button><button aria-current={view === 'completed' ? 'page' : undefined} className={view === 'completed' ? 'active' : ''} onClick={() => setView('completed')}>完了済み</button><button aria-current={['more', 'inbox', 'import', 'help'].includes(view) ? 'page' : undefined} className={['more', 'inbox', 'import', 'help'].includes(view) ? 'active' : ''} onClick={() => setView('more')}>その他</button></nav>
+    <main><nav aria-label="メインメニュー"><button aria-current={view === 'today' ? 'page' : undefined} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>今日 <b>{todayItems.length}</b></button><button aria-current={view === 'calendar' || view === 'day' ? 'page' : undefined} className={view === 'calendar' || view === 'day' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button><button aria-current={view === 'all' ? 'page' : undefined} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>すべて <b>{openItems.length}</b></button><button aria-current={view === 'completed' ? 'page' : undefined} className={view === 'completed' ? 'active' : ''} onClick={() => setView('completed')}>完了済み</button><button aria-current={['more', 'connections', 'inbox', 'import', 'help'].includes(view) ? 'page' : undefined} className={['more', 'connections', 'inbox', 'import', 'help'].includes(view) ? 'active' : ''} onClick={() => setView('more')}>その他</button></nav>
       <section className="content">
         {view === 'today' && <><h2>今日やること</h2>{renderList(todayItems, '今日の予定・タスクはありません。')}</>}
         {view === 'calendar' && <div className="calendar-view">
@@ -294,7 +394,7 @@ function App() {
           <div className="calendar-weekdays" aria-hidden="true">{['日', '月', '火', '水', '木', '金', '土'].map((day) => <span key={day}>{day}</span>)}</div>
           <div className="calendar-grid" aria-label="月間カレンダー">{daysInCalendar.map((date) => {
             const dateKey = localDate(date)
-            const dayItems = items.filter((item) => item.date === dateKey)
+            const dayItems = displayItems.filter((item) => item.date === dateKey)
             const openCount = dayItems.filter((item) => !item.done).length
             const doneCount = dayItems.filter((item) => item.done).length
             const outside = date.getMonth() !== calendarMonth.getMonth()
@@ -310,7 +410,8 @@ function App() {
         {view === 'inbox' && <><button className="back-button" onClick={() => setView('more')}>← その他へ戻る</button><h2>未整理</h2><p className="lead">日付が未設定のものや、ChatGPTから取り込んでまだ確認していない項目を一時的に置く場所です。</p>{renderList(inboxItems, '未整理の項目はありません。')}</>}
         {view === 'all' && <><h2>すべての未完了予定・タスク</h2><p className="lead">過去・今日・未来の未完了項目を日付順に表示します。</p>{renderList(openItems, '未完了の予定・タスクはありません。')}</>}
         {view === 'completed' && <><h2>完了済み</h2><p className="lead">完了した予定・タスクを振り返り、必要なら未完了へ戻せます。</p>{renderList(completedItems, '完了済みの項目はありません。', true)}</>}
-        {view === 'more' && <div className="more-view"><h2>その他の機能</h2><button onClick={() => setView('inbox')}><strong>未整理</strong><span>日付なし・確認待ちの項目</span><b>{inboxItems.length}</b></button><button onClick={() => setView('import')}><strong>ChatGPTから取込</strong><span>プリントからまとめて追加</span></button><button onClick={() => setView('help')}><strong>使い方</strong><span>操作方法・バックアップ・注意事項</span></button></div>}
+        {view === 'more' && <div className="more-view"><h2>その他の機能</h2><button onClick={() => setView('connections')}><strong>Google連携</strong><span>端末間同期・Googleカレンダー</span></button><button onClick={() => setView('inbox')}><strong>未整理</strong><span>日付なし・確認待ちの項目</span><b>{inboxItems.length}</b></button><button onClick={() => setView('import')}><strong>ChatGPTから取込</strong><span>プリントからまとめて追加</span></button><button onClick={() => setView('help')}><strong>使い方</strong><span>操作方法・バックアップ・注意事項</span></button></div>}
+        {view === 'connections' && <div className="connections-view"><button className="back-button" onClick={() => setView('more')}>← その他へ戻る</button><h2>Google連携</h2><section><h3>端末間同期</h3><p>同じGoogleアカウントでログインしたスマホとPCで、アプリ内の予定・タスクを同期します。</p><p className="connection-status">{cloudUser ? `${cloudUser.displayName || cloudUser.email || 'Googleアカウント'}・${cloudStatus}` : cloudStatus}</p>{!isCloudConfigured && <p className="setup-needed">Firebaseの設定が必要です。</p>}{cloudUser ? <button onClick={disconnectCloud}>ログアウト</button> : <button className="primary" disabled={!isCloudConfigured} onClick={connectCloud}>Googleでログイン</button>}</section><section><h3>Googleカレンダー表示</h3><p>Googleカレンダーの予定を、今日・カレンダー・すべて・日別画面へ読み取り専用で表示します。</p><p className="connection-status">{calendarStatus}</p>{!isGoogleCalendarConfigured && <p className="setup-needed">Google OAuthクライアントの設定が必要です。</p>}<button className="primary" disabled={!isGoogleCalendarConfigured} onClick={connectCalendar}>Googleカレンダーへ接続</button></section></div>}
         {view === 'import' && <div className="panel"><button className="back-button" onClick={() => setView('more')}>← その他へ戻る</button><h2>ChatGPTからまとめて取り込む</h2><p className="lead">ChatGPTが出力したJSONを、そのまま貼り付けてください。登録前に「未整理」で確認できます。</p><label htmlFor="json-import">ChatGPTが出力したJSON</label><textarea id="json-import" rows={14} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder='[{"type":"event","title":"授業参観", ...}]' />{importMessage && <p className="message" aria-live="polite">{importMessage}</p>}<button className="primary" onClick={importJson}>未整理へ追加</button></div>}
         {view === 'help' && <div className="help"><button className="back-button" onClick={() => setView('more')}>← その他へ戻る</button><h2>使い方</h2><section><h3>普段の追加</h3><p>画面上部へ「明日 16時 職員会議」のように入力します。候補を確認し、予定またはタスクとして保存してください。</p></section><section><h3>未整理とは？</h3><p>日付が決まっていないものや、ChatGPTから取り込んでまだ確認していない項目を一時的に置く場所です。内容を編集して日付を入れると、カレンダーや「すべて」で確認できます。</p></section><section><h3>カレンダーと完了済み</h3><p>カレンダーの日付には予定名が表示されます。日付を押すと日別画面へ移動し、その日の予定確認と追加ができます。完了済み画面では、完了した項目を未完了へ戻せます。</p></section><section><h3>スマホのホーム画面へ追加</h3><p>iPhoneはSafariの共有ボタンから「ホーム画面に追加」、AndroidはChromeメニューから「ホーム画面に追加」または「アプリをインストール」を選びます。</p></section><section><h3>プリントから取り込む</h3><ol><li>プリントに児童名・住所・連絡先などがあれば、撮影前または画像編集で必ず隠します。</li><li>ChatGPTへ画像を送り、下の指示文を貼り付けます。</li><li>返ってきたJSONを「ChatGPTから取込」に貼り付けます。</li><li>未整理で日付や内容を確認してから使います。</li></ol><div className="prompt-box"><pre>{prompt}</pre><button onClick={copyPrompt}>{copied ? 'コピーしました' : '指示文をコピー'}</button><span className="sr-only" aria-live="polite">{copied ? '指示文をコピーしました' : ''}</span></div></section><section className="caution"><h3>大切な注意</h3><p>ChatGPTへ送る前に、児童・保護者・職員の個人情報を必ず除いてください。共有PCでは、同じブラウザを使う人に予定が見える可能性があります。</p></section><section><h3>保存とバックアップ</h3><p>データは、このブラウザ内だけに保存されます。端末の紛失やブラウザデータ削除に備えて、定期的にバックアップしてください。</p><div className="backup-actions"><button onClick={exportBackup}>バックアップを保存</button><label className="file-button">バックアップを復元<input type="file" accept="application/json,.json" onChange={(event) => restoreBackup(event.target.files?.[0])} /></label></div></section></div>}
       </section></main>

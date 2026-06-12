@@ -84,6 +84,11 @@ nav b { font-size:.8rem; background:white; padding:1px 7px; border-radius:10px; 
 .more-view button strong { color:var(--ink); }
 .more-view button span { color:var(--muted); font-size:.8rem; grid-column:1; }
 .more-view button b { grid-column:2; grid-row:1 / span 2; align-self:center; min-width:28px; padding:4px 8px; border-radius:14px; color:var(--green); background:var(--green-soft); text-align:center; }
+.connections-view section { background:white; border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:14px; }
+.connections-view section p { color:var(--muted); line-height:1.65; }
+.connection-status { color:var(--green) !important; font-weight:700; }
+.setup-needed { color:#9a5d28 !important; background:#fff4dc; border-radius:8px; padding:8px 10px; font-size:.82rem; }
+button:disabled { cursor:not-allowed; opacity:.5; transform:none; }
 .panel, .help section { background:white; border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:14px; }
 textarea { width:100%; resize:vertical; border:1px solid var(--line); border-radius:9px; padding:12px; color:var(--ink); background:white; }
 .message { color:var(--green); font-size:.87rem; }
