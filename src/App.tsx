@@ -43,18 +43,31 @@ const isValidDate = (value: string) => {
   return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3])
 }
 const isValidTime = (value: string) => value === '' || (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))
+const MAX_ITEMS = 500
+const isSafeGoogleCalendarUrl = (value?: string) => {
+  if (!value) return ''
+  try {
+    const url = new URL(value)
+    const isGoogleCalendarHost = url.hostname === 'calendar.google.com' || url.hostname === 'www.google.com'
+    if (url.protocol === 'https:' && isGoogleCalendarHost && url.pathname.startsWith('/calendar/')) return url.toString()
+  } catch {
+    return ''
+  }
+  return ''
+}
+const googleCalendarExternalUrl = (item: Item) => item.source === 'google' ? isSafeGoogleCalendarUrl(item.externalUrl) : ''
 const isItemArray = (value: unknown): value is Item[] => Array.isArray(value) && value.every((item) => {
   if (!item || typeof item !== 'object') return false
   const entry = item as Partial<Item>
-  return typeof entry.id === 'string' && (entry.type === 'event' || entry.type === 'task') &&
+  return value.length <= MAX_ITEMS &&
+    typeof entry.id === 'string' && entry.id.length <= 80 && (entry.type === 'event' || entry.type === 'task') &&
     typeof entry.title === 'string' && typeof entry.date === 'string' && isValidDate(entry.date) &&
     typeof entry.startTime === 'string' && isValidTime(entry.startTime) &&
     typeof entry.endTime === 'string' && isValidTime(entry.endTime) &&
     (entry.category === '仕事' || entry.category === '私生活') &&
-    typeof entry.notes === 'string' && typeof entry.done === 'boolean' &&
+    entry.title.length <= 120 && typeof entry.notes === 'string' && entry.notes.length <= 2000 && typeof entry.done === 'boolean' &&
     typeof entry.confirmed === 'boolean' && typeof entry.createdAt === 'string' &&
-    (entry.source === undefined || entry.source === 'google') &&
-    (entry.externalUrl === undefined || typeof entry.externalUrl === 'string')
+    entry.source === undefined && entry.externalUrl === undefined
 })
 
 const sampleItems: Item[] = [{ id: crypto.randomUUID(), type: 'task', title: '週案を確認する', date: today(), startTime: '', endTime: '', category: '仕事', notes: '初期サンプルです。完了または削除できます。', done: false, confirmed: true, createdAt: new Date().toISOString() }]
@@ -378,7 +391,7 @@ function App() {
     {list.map((item) => <article className={`item-card ${item.type}`} key={item.id}>
       {item.source !== 'google' && <button className="check" aria-label={completed ? '未完了に戻す' : '完了にする'} onClick={() => setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, done: !completed } : entry))}>{completed ? '↩' : '✓'}</button>}
       <div className="item-main"><div className="item-topline"><span className={`tag ${item.category === '私生活' ? 'private' : ''}`}>{item.category}</span><span className="type-label">{item.source === 'google' ? 'Googleカレンダー' : item.type === 'event' ? '予定' : 'タスク'}</span>{!item.confirmed && <span className="warning">要確認</span>}</div><strong>{item.title}</strong><div className="meta">{item.date || '日付未設定'} {item.startTime && `${item.startTime}${item.endTime ? ` - ${item.endTime}` : ''}`}</div>{item.notes && <p>{item.notes}</p>}</div>
-      <div className="item-actions">{item.source !== 'google' && !completed && <button onClick={() => editItem(item)}>編集</button>}{item.source === 'google' && item.externalUrl && <a href={item.externalUrl} target="_blank" rel="noreferrer">Googleで開く</a>}{item.source !== 'google' && item.type === 'event' && item.date && !completed && <a href={googleCalendarUrl(item)} target="_blank" rel="noreferrer">Googleへ</a>}{item.source !== 'google' && <button className="danger" onClick={() => deleteItem(item)}>削除</button>}</div>
+      <div className="item-actions">{item.source !== 'google' && !completed && <button onClick={() => editItem(item)}>編集</button>}{googleCalendarExternalUrl(item) && <a href={googleCalendarExternalUrl(item)} target="_blank" rel="noopener noreferrer">Googleで開く</a>}{item.source !== 'google' && item.type === 'event' && item.date && !completed && <a href={googleCalendarUrl(item)} target="_blank" rel="noopener noreferrer">Googleへ</a>}{item.source !== 'google' && <button className="danger" onClick={() => deleteItem(item)}>削除</button>}</div>
     </article>)}
   </div>
 

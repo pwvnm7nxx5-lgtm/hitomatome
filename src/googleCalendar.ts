@@ -37,6 +37,18 @@ const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 export const isGoogleCalendarConfigured = Boolean(clientId)
 let accessToken = ''
 
+function safeGoogleCalendarUrl(value: unknown) {
+  if (typeof value !== 'string') return ''
+  try {
+    const url = new URL(value)
+    const isGoogleCalendarHost = url.hostname === 'calendar.google.com' || url.hostname === 'www.google.com'
+    if (url.protocol === 'https:' && isGoogleCalendarHost && url.pathname.startsWith('/calendar/')) return url.toString()
+  } catch {
+    return ''
+  }
+  return ''
+}
+
 export async function connectGoogleCalendar() {
   if (!clientId || !window.google) throw new Error('Googleカレンダー接続が設定されていません。')
   accessToken = await new Promise<string>((resolve, reject) => {
@@ -88,7 +100,7 @@ export async function loadGoogleCalendar(): Promise<GoogleCalendarItem[]> {
       confirmed: true as const,
       createdAt: String(raw.created || ''),
       source: 'google' as const,
-      externalUrl: String(raw.htmlLink || ''),
+      externalUrl: safeGoogleCalendarUrl(raw.htmlLink),
     }]
   })
 }

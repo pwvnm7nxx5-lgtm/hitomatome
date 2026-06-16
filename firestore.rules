@@ -2,8 +2,27 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isMaster() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'fivenightfoxys@gmail.com';
+    }
+
+    function isOwner(userId) {
+      return isMaster() && request.auth.uid == userId;
+    }
+
+    function isValidMainData() {
+      return request.resource.data.keys().hasOnly(['items', 'updatedAt'])
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 500
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/data/{documentId} {
+      allow read: if documentId == 'main' && isOwner(userId);
+      allow create, update: if documentId == 'main' && isOwner(userId) && isValidMainData();
+      allow delete: if documentId == 'main' && isOwner(userId);
     }
   }
 }

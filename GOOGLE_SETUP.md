@@ -44,3 +44,11 @@ npm run dev
 GitHubリポジトリの `Settings > Secrets and variables > Actions` に、`.env.example` と同名のSecretsを登録する。登録後、Actionsの `Deploy to GitHub Pages` を再実行する。
 
 FirebaseのWeb設定値とOAuthクライアントIDはブラウザ向け識別子であり、秘密鍵ではありません。ただし、FirestoreルールとOAuthの承認済み生成元は必ず制限してください。
+
+## 5. セキュリティ運用
+
+- `firestore.rules` は `fivenightfoxys@gmail.com` のログインだけを許可する個人利用向け設定です。利用者を増やす場合は、許可メールや認証方式を見直してください。
+- Google Calendar連携は読み取り専用スコープだけを使います。書き込み機能を追加する場合は、権限説明と確認画面を必ず更新してください。
+- `index.html` にはCSPを設定しています。外部APIやスクリプトを増やす場合は、必要な接続先だけを追加してください。
+- `.env.local`、Firebase CLIのデバッグログ、OAuthクライアントシークレットはコミットしないでください。
+- GitHub ActionsのSecretsを変更した後は、公開URLでGoogleログインとカレンダー接続を確認してください。
