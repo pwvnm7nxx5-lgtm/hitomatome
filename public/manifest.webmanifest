@@ -6,6 +6,20 @@
   "display": "standalone",
   "background_color": "#f6f8f5",
   "theme_color": "#397b5b",
+  "shortcuts": [
+    {
+      "name": "\u4eca\u65e5\u306e\u4e88\u5b9a",
+      "short_name": "\u4eca\u65e5",
+      "description": "\u4eca\u65e5\u306e\u4e88\u5b9a\u30fb\u30bf\u30b9\u30af\u3092\u5c0f\u3055\u304f\u8868\u793a",
+      "url": "./?widget=today"
+    },
+    {
+      "name": "\u30ab\u30ec\u30f3\u30c0\u30fc",
+      "short_name": "\u30ab\u30ec\u30f3\u30c0\u30fc",
+      "description": "\u6708\u9593\u30ab\u30ec\u30f3\u30c0\u30fc\u3092\u5c0f\u3055\u304f\u8868\u793a",
+      "url": "./?widget=calendar"
+    }
+  ],
   "icons": [
     {
       "src": "./favicon.svg",
