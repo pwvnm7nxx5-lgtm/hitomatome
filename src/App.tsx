@@ -208,12 +208,8 @@ function App() {
         return
       }
       if (firstCloudSnapshot.current && hadLocalData.current && JSON.stringify(cloudItems) !== JSON.stringify(itemsRef.current)) {
-        firstCloudSnapshot.current = false
-        if (!window.confirm('クラウドに保存されたデータを、この端末へ読み込みますか？\nキャンセルすると、この端末のデータをクラウドへ保存します。')) {
-          cloudReady.current = true
-          void saveCloudItems(cloudUser.uid, itemsRef.current).then(() => setCloudStatus('同期済み'))
-          return
-        }
+        localStorage.setItem(RECOVERY_KEY, JSON.stringify(itemsRef.current, null, 2))
+        setHasRecovery(true)
       }
       firstCloudSnapshot.current = false
       applyingCloud.current = true
@@ -407,7 +403,7 @@ function App() {
   return <div className={`app-shell ${isWidget ? `widget-shell widget-${widgetMode}` : ''}`}>
     {isWidget && <header className="widget-header"><div><p className="eyebrow">ひとまとめウィジェット</p><h1>{widgetMode === 'calendar' ? 'カレンダー' : '今日の予定'}</h1></div><a href={appUrl}>通常版</a></header>}
     {!isWidget && <header><div><p className="eyebrow">予定もタスクも、まずここへ</p><h1>ひとまとめ</h1></div><div className="today-label">{new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())}</div></header>}
-    {hasRecovery && <section className="recovery-alert" role="alert"><div><strong>以前の保存データを読み込めませんでした</strong><span>元データを復旧用ファイルとして保存できます。</span></div><button onClick={downloadRecovery}>復旧用データを保存</button><button onClick={dismissRecovery}>閉じる</button></section>}
+    {hasRecovery && <section className="recovery-alert" role="alert"><div><strong>復旧用データがあります</strong><span>読み込めなかったデータ、またはクラウド同期前の端末データを保存しています。</span></div><button onClick={downloadRecovery}>復旧用データを保存</button><button onClick={dismissRecovery}>閉じる</button></section>}
     {!isWidget && <section className="quick-add"><div className="quick-copy"><strong>すばやく追加</strong><span>「明日 16時 職員会議」のように入力</span>{voiceStatus && <span aria-live="polite">{voiceStatus}</span>}</div><div className="quick-controls"><label className="sr-only" htmlFor="quick-input">予定やタスク</label><input id="quick-input" value={quickText} onChange={(event) => setQuickText(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addQuick()} placeholder="予定やタスクを入力..." /><button className="voice" onClick={startVoice}>音声</button><button className="primary" onClick={addQuick}>追加</button></div></section>}
     <main className={isWidget ? 'widget-main' : undefined}>{!isWidget && <nav aria-label="メインメニュー"><button aria-current={view === 'today' ? 'page' : undefined} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>今日 <b>{todayItems.length}</b></button><button aria-current={view === 'calendar' || view === 'day' ? 'page' : undefined} className={view === 'calendar' || view === 'day' ? 'active' : ''} onClick={() => setView('calendar')}>カレンダー</button><button aria-current={view === 'all' ? 'page' : undefined} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>すべて <b>{openItems.length}</b></button><button aria-current={view === 'completed' ? 'page' : undefined} className={view === 'completed' ? 'active' : ''} onClick={() => setView('completed')}>完了済み</button><button aria-current={['more', 'connections', 'inbox', 'import', 'help'].includes(view) ? 'page' : undefined} className={['more', 'connections', 'inbox', 'import', 'help'].includes(view) ? 'active' : ''} onClick={() => setView('more')}>その他</button></nav>}
       <section className="content">
